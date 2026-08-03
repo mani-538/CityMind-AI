@@ -4,8 +4,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging, logger
-from app.db.session import engine
+from app.db.session import engine, AsyncSessionLocal
 from app.db.base import Base
+from app.db.seed import seed_database_if_empty
 
 # Import all models to ensure they are registered with Base metadata
 import app.models  # noqa
@@ -17,6 +18,11 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Ashmora CityMind AI Database Tables...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Auto-seed database if empty (ensures live deployments on Render have demo accounts ready)
+    async with AsyncSessionLocal() as session:
+        await seed_database_if_empty(session)
+
     logger.info("Ashmora CityMind AI Engine Started successfully.")
     yield
     logger.info("Shutting down Ashmora CityMind AI Engine.")
@@ -31,15 +37,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS Setup
-if settings.CORS_ORIGINS:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[str(origin) for origin in settings.CORS_ORIGINS],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# CORS Setup - Enable wildcard CORS support for Vercel & custom deployments
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Exception handler wrapper for clean error responses

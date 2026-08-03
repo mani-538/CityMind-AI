@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://citymind-ai-ul76.onrender.com/api/v1';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -43,9 +43,6 @@ apiClient.interceptors.response.use(
       } catch (refreshErr) {
         localStorage.removeItem('citymind_access_token');
         localStorage.removeItem('citymind_refresh_token');
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
       }
     }
     return Promise.reject(error);
