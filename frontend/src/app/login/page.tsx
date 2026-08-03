@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { apiClient } from '@/lib/api';
-import { Lock, Mail, ArrowRight, AlertCircle, Shield } from 'lucide-react';
+import { Lock, Mail, ArrowRight, AlertCircle, Shield, UserCheck, KeyRound } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -15,6 +15,11 @@ export default function LoginPage() {
   
   const { login } = useAuth();
   const router = useRouter();
+
+  const handleDemoFill = (demoEmail: string) => {
+    setEmail(demoEmail);
+    setPassword('DemoPassword123!');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +31,12 @@ export default function LoginPage() {
       if (response.data.success) {
         const { access_token, refresh_token } = response.data.data;
         await login(access_token, refresh_token);
-        router.push('/citizen');
+        
+        if (email.includes('officer') || email.includes('admin')) {
+          router.push('/government');
+        } else {
+          router.push('/citizen');
+        }
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Invalid email or password');
@@ -36,9 +46,73 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="flex-1 flex flex-col md:flex-row items-center justify-center p-6 gap-8 relative overflow-hidden max-w-6xl mx-auto w-full">
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
 
+      {/* Left Box: 1-Click Demo Accounts Quick Selector */}
+      <div className="glass-panel p-6 rounded-2xl border border-cyan-500/30 w-full md:w-80 shadow-2xl relative z-10">
+        <div className="flex items-center gap-2 text-cyan-400 font-mono text-xs font-bold uppercase tracking-wider mb-2">
+          <KeyRound className="w-4 h-4" /> Live Demo Quick Access
+        </div>
+        <h2 className="text-lg font-bold text-white mb-2">Sample Test Accounts</h2>
+        <p className="text-xs text-slate-400 mb-4">Click any persona below to auto-fill test credentials:</p>
+
+        <div className="space-y-2.5">
+          <button
+            type="button"
+            onClick={() => handleDemoFill('citizen@ashmora.gov')}
+            className="w-full p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 text-left transition flex items-center justify-between group"
+          >
+            <div>
+              <div className="text-xs font-bold text-white group-hover:text-cyan-400">Citizen Persona</div>
+              <div className="text-[10px] text-slate-400 font-mono">citizen@ashmora.gov</div>
+            </div>
+            <UserCheck className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDemoFill('officer@ashmora.gov')}
+            className="w-full p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 text-left transition flex items-center justify-between group"
+          >
+            <div>
+              <div className="text-xs font-bold text-white group-hover:text-cyan-400">Gov Command Officer</div>
+              <div className="text-[10px] text-slate-400 font-mono">officer@ashmora.gov</div>
+            </div>
+            <UserCheck className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDemoFill('admin@ashmora.gov')}
+            className="w-full p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 text-left transition flex items-center justify-between group"
+          >
+            <div>
+              <div className="text-xs font-bold text-white group-hover:text-cyan-400">Department Admin</div>
+              <div className="text-[10px] text-slate-400 font-mono">admin@ashmora.gov</div>
+            </div>
+            <UserCheck className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDemoFill('superadmin@ashmora.gov')}
+            className="w-full p-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 text-left transition flex items-center justify-between group"
+          >
+            <div>
+              <div className="text-xs font-bold text-white group-hover:text-cyan-400">Super Admin (CTO)</div>
+              <div className="text-[10px] text-slate-400 font-mono">superadmin@ashmora.gov</div>
+            </div>
+            <UserCheck className="w-4 h-4 text-slate-500 group-hover:text-cyan-400" />
+          </button>
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-slate-800 text-[11px] font-mono text-slate-500">
+          Default Password: <span className="text-cyan-400 font-bold">DemoPassword123!</span>
+        </div>
+      </div>
+
+      {/* Right Box: Standard Login Form */}
       <div className="glass-panel max-w-md w-full p-8 rounded-2xl border border-slate-700 shadow-2xl relative z-10">
         <div className="text-center mb-8">
           <div className="w-12 h-12 rounded-xl bg-cyan-950 border border-cyan-500/30 flex items-center justify-center text-cyan-400 font-bold mx-auto mb-3 text-xl">
