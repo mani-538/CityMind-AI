@@ -7,6 +7,32 @@ CityMind AI is an Agentic AI Smart City Operating System built by **Ashmora**. U
 
 ---
 
+## 🌐 Live Sharable Deployment Links
+
+| Resource | Service / Platform | Live URL |
+| :--- | :--- | :--- |
+| **Frontend Web App** | Vercel | 👉 **[https://city-mind-ai-three.vercel.app](https://city-mind-ai-three.vercel.app)** |
+| **Backend REST API** | Render | 👉 **[https://citymind-ai-ul76.onrender.com](https://citymind-ai-ul76.onrender.com)** |
+| **Interactive API Docs** | Render | 👉 **[https://citymind-ai-ul76.onrender.com/api/v1/docs](https://citymind-ai-ul76.onrender.com/api/v1/docs)** |
+| **Source Code Repository** | GitHub | 👉 **[https://github.com/mani-538/CityMind-AI.git](https://github.com/mani-538/CityMind-AI.git)** |
+
+---
+
+## 🔑 Pre-Seeded Live Demo Accounts
+
+All sample test accounts are pre-configured with auto-seeding. Default Password: **`DemoPassword123!`**
+
+| Persona | Role | Sample Email | Default Password | Features & Access |
+| :--- | :--- | :--- | :--- | :--- |
+| **Citizen Persona** | `Citizen` | `citizen@ashmora.gov` | `DemoPassword123!` | Incident reporting, interactive pin dropping, live timeline tracker, AI notifications |
+| **Government Officer** | `Government Officer` | `officer@ashmora.gov` | `DemoPassword123!` | Command center telemetry stream, 1-click dispatch controls, live map, AI agent execution logs |
+| **Department Admin** | `Department Admin` | `admin@ashmora.gov` | `DemoPassword123!` | Departmental analytics, resource allocation, and priority escalation |
+| **Super Admin (CTO)** | `Super Admin` | `superadmin@ashmora.gov` | `DemoPassword123!` | Master system access, multi-agent configuration, full city audit logs |
+
+> 💡 **1-Click Login**: When opening the [Login Page](https://city-mind-ai-three.vercel.app/login), click any persona in the **"Live Demo Quick Access"** box to auto-fill credentials instantly!
+
+---
+
 ## 🌟 Key Architecture & Features
 
 ### 1. Multi-Agent Ecosystem (Gemini Powered)
@@ -35,11 +61,9 @@ CityMind AI is an Agentic AI Smart City Operating System built by **Ashmora**. U
 
 ---
 
-## 🚀 Quick Setup & Installation
+## 🚀 Quick Setup & Local Development
 
-### Option 1: Run Locally (Dev Mode)
-
-#### 1. Backend (FastAPI + SQLAlchemy)
+### 1. Backend (FastAPI + SQLAlchemy)
 ```bash
 cd backend
 python -m venv venv
@@ -59,27 +83,21 @@ uvicorn app.main:app --reload --port 8000
 ```
 Swagger OpenAPI docs will be live at: `http://localhost:8000/api/v1/docs`
 
-#### 2. Frontend (Next.js 14 App Router)
+### 2. Frontend (Next.js 14 App Router)
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Access the application at: `http://localhost:3000`
+Access the local application at: `http://localhost:3000`
 
 ---
 
-### Option 2: Run with Docker Compose
+## 🐳 Docker Deployment
 ```bash
-docker-compose up --build
+docker-compose up --build -d
 ```
 
 ---
 
-## 📚 Technical Documentation
-
-- **[Walkthrough Summary](file:///C:/Users/DELL/.gemini/antigravity-ide/brain/8eb95c51-34d9-47e9-8f20-f14b04dca5bb/walkthrough.md)**
-- **[Implementation Plan](file:///C:/Users/DELL/.gemini/antigravity-ide/brain/8eb95c51-34d9-47e9-8f20-f14b04dca5bb/implementation_plan.md)**
-
----
 © 2026 Ashmora Technologies Inc. All rights reserved.
