@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+
+# Database & SQLite
+*.db
+*.sqlite3
+citymind.db
+
+# IDEs & System
+.vscode/
+.idea/
+.DS_Store
+*.log
