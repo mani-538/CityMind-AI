@@ -2,6 +2,7 @@ from typing import List, Optional
 from sqlalchemy import String, Boolean, ForeignKey, Table, Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin, SoftDeleteMixin
+from datetime import datetime
 
 # Association Table for User-Role Many-to-Many
 user_roles_table = Table(
@@ -32,6 +33,9 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     phone_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    
+    otp_code: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
+    otp_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
 
     department_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True

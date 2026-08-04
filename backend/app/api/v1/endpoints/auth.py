@@ -4,10 +4,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.repositories.user_repository import UserRepository
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token, decode_token
-from app.schemas.user import UserRegister, UserLogin, TokenResponse, UserResponse, RefreshTokenRequest
+from app.schemas.user import UserRegister, UserLogin, TokenResponse, UserResponse, RefreshTokenRequest, OTPVerifyRequest
 from app.schemas.common import ResponseEnvelope
 from app.api.deps import get_current_user
 from app.models.user import User, Role
+from app.services.email_service import send_otp_email
+import random
+import string
+import logging
+from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -33,6 +40,10 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
         db.add(role)
         await db.flush()
 
+    # Generate OTP
+    otp_code = ''.join(random.choices(string.digits, k=6))
+    otp_expires_at = datetime.utcnow() + timedelta(minutes=10)
+
     # Create new user
     hashed_pwd = get_password_hash(user_in.password)
     user_dict = {
@@ -41,18 +52,78 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
         "full_name": user_in.full_name,
         "phone_number": user_in.phone_number,
         "is_active": True,
-        "is_verified": True,
+        "is_verified": False,
+        "otp_code": otp_code,
+        "otp_expires_at": otp_expires_at,
     }
     
     new_user = await user_repo.create(user_dict)
     await user_repo.assign_role_to_user(new_user, role)
     await db.commit()
     await db.refresh(new_user)
+    
+    # Send OTP email (never fail registration if email delivery breaks)
+    try:
+        send_otp_email(new_user.email, otp_code)
+    except Exception as e:
+        logger.error(f"Failed to send OTP email to {new_user.email}: {e}")
 
     return ResponseEnvelope(
         success=True,
-        message="User registered successfully",
+        message="User registered successfully. Please verify your email with the OTP sent.",
         data=UserResponse.model_validate(new_user)
+    )
+
+@router.post("/verify-otp", response_model=ResponseEnvelope[TokenResponse])
+async def verify_otp(verify_in: OTPVerifyRequest, db: AsyncSession = Depends(get_db)):
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_email(verify_in.email)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already verified"
+        )
+        
+    if user.otp_code != verify_in.otp_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OTP code"
+        )
+        
+    if user.otp_expires_at and user.otp_expires_at < datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OTP code has expired"
+        )
+        
+    # Mark user as verified and clear OTP
+    user.is_verified = True
+    user.otp_code = None
+    user.otp_expires_at = None
+    
+    await db.commit()
+    await db.refresh(user)
+    
+    # Generate tokens and log them in
+    user_roles = [r.name for r in user.roles]
+    access_token = create_access_token(subject=user.id, roles=user_roles)
+    refresh_token = create_refresh_token(subject=user.id)
+
+    return ResponseEnvelope(
+        success=True,
+        message="OTP verified successfully. User logged in.",
+        data=TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=3600
+        )
     )
 
 

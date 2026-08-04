@@ -24,6 +24,11 @@ class UserLogin(BaseModel):
     password: str
 
 
+class OTPVerifyRequest(BaseModel):
+    email: EmailStr
+    otp_code: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str

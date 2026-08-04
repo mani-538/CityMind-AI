@@ -17,6 +17,12 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str = ""
 
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    FROM_EMAIL: str = "noreply@ashmora.gov"
+
     CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     @field_validator("CORS_ORIGINS", mode="before")
