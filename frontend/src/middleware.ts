@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Protected routes requiring authentication
-const PROTECTED_PREFIXES = ['/citizen', '/government', '/admin', '/agents', '/complaints'];
+const PROTECTED_PREFIXES = ['/citizen', '/government', '/admin', '/agents', '/complaints', '/profile'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -22,5 +22,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/citizen/:path*', '/government/:path*', '/admin/:path*', '/agents/:path*', '/complaints/:path*'],
+  matcher: ['/citizen/:path*', '/government/:path*', '/admin/:path*', '/agents/:path*', '/complaints/:path*', '/profile/:path*', '/profile'],
 };
+
