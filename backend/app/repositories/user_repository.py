@@ -2,7 +2,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.repositories.base import BaseRepository
-from app.models.user import User, Role, user_roles_table
+from app.models.user import User, Role
 
 
 class UserRepository(BaseRepository[User]):

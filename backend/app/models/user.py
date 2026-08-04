@@ -1,8 +1,16 @@
-from typing import List, Optional
+from __future__ import annotations  # enables forward-references for all type hints
+
+from typing import TYPE_CHECKING, List, Optional
 from datetime import datetime
 from sqlalchemy import String, Boolean, ForeignKey, Table, Column, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, UUIDMixin, TimestampMixin, SoftDeleteMixin
+
+if TYPE_CHECKING:
+    # Only imported for static type-checkers; avoids circular import at runtime
+    from app.models.department import Department
+    from app.models.complaint import Complaint, ComplaintAssignment
+    from app.models.notification import Notification
 
 # Association Table for User-Role Many-to-Many
 user_roles_table = Table(
@@ -19,7 +27,7 @@ class Role(Base, UUIDMixin, TimestampMixin):
     name: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
-    users: Mapped[List["User"]] = relationship(
+    users: Mapped[List[User]] = relationship(
         "User", secondary=user_roles_table, back_populates="roles"
     )
 
@@ -35,7 +43,9 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Organization Member Approval Status
-    approval_status: Mapped[str] = mapped_column(String(30), default="Approved", nullable=False, index=True)
+    approval_status: Mapped[str] = mapped_column(
+        String(30), default="Approved", nullable=False, index=True
+    )
     approved_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     employee_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -52,27 +62,37 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     pincode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     aadhaar_masked: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     emergency_contact: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    preferred_language: Mapped[Optional[str]] = mapped_column(String(30), nullable=True, default="English")
+    preferred_language: Mapped[Optional[str]] = mapped_column(
+        String(30), nullable=True, default="English"
+    )
     designation: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     department_address: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     # OTP Verification Fields
     otp_code: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
-    otp_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    otp_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     department_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True
     )
 
-    # Relationships
+    # Relationships — use string literals to avoid circular import issues at runtime
     roles: Mapped[List[Role]] = relationship(
         "Role", secondary=user_roles_table, back_populates="users", lazy="joined"
     )
-    department: Mapped[Optional["Department"]] = relationship("Department", back_populates="officers")
-    complaints: Mapped[List["Complaint"]] = relationship(
+    department: Mapped[Optional[Department]] = relationship(
+        "Department", back_populates="officers"
+    )
+    complaints: Mapped[List[Complaint]] = relationship(
         "Complaint", back_populates="citizen", foreign_keys="Complaint.citizen_id"
     )
-    assigned_complaints: Mapped[List["ComplaintAssignment"]] = relationship(
-        "ComplaintAssignment", back_populates="assigned_officer", foreign_keys="ComplaintAssignment.assigned_officer_id"
+    assigned_complaints: Mapped[List[ComplaintAssignment]] = relationship(
+        "ComplaintAssignment",
+        back_populates="assigned_officer",
+        foreign_keys="ComplaintAssignment.assigned_officer_id",
     )
-    notifications: Mapped[List["Notification"]] = relationship("Notification", back_populates="user")
+    notifications: Mapped[List[Notification]] = relationship(
+        "Notification", back_populates="user"
+    )
