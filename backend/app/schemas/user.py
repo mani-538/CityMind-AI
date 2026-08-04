@@ -24,9 +24,13 @@ class UserLogin(BaseModel):
     password: str
 
 
-class OTPVerifyRequest(BaseModel):
+class OTPRequest(BaseModel):
     email: EmailStr
-    otp_code: str
+
+
+class OTPVerify(BaseModel):
+    email: EmailStr
+    otp_code: str = Field(..., min_length=6, max_length=6)
 
 
 class TokenResponse(BaseModel):

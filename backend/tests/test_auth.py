@@ -12,10 +12,10 @@ async def test_health_check(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_user_registration_and_login(client: AsyncClient):
-    # 1. Register User
+async def test_user_registration_and_otp_verification(client: AsyncClient):
+    # 1. Register User & Receive OTP
     reg_payload = {
-        "email": "citizen@ashmora.gov",
+        "email": "otp_citizen@ashmora.gov",
         "password": "SecurePassword123!",
         "full_name": "John Ashmora Citizen",
         "role_name": "Citizen"
@@ -24,20 +24,21 @@ async def test_user_registration_and_login(client: AsyncClient):
     assert reg_res.status_code == 201
     reg_data = reg_res.json()
     assert reg_data["success"] is True
-    assert reg_data["data"]["email"] == "citizen@ashmora.gov"
+    assert "demo_otp_code" in reg_data["data"]
 
-    # 2. Login User
-    login_payload = {
-        "email": "citizen@ashmora.gov",
-        "password": "SecurePassword123!"
-    }
-    login_res = await client.post("/api/v1/auth/login", json=login_payload)
-    assert login_res.status_code == 200
-    login_data = login_res.json()
-    assert login_data["success"] is True
-    assert "access_token" in login_data["data"]
+    otp_code = reg_data["data"]["demo_otp_code"]
 
-    token = login_data["data"]["access_token"]
+    # 2. Verify OTP
+    verify_res = await client.post("/api/v1/auth/verify-otp", json={
+        "email": "otp_citizen@ashmora.gov",
+        "otp_code": otp_code
+    })
+    assert verify_res.status_code == 200
+    verify_data = verify_res.json()
+    assert verify_data["success"] is True
+    assert "access_token" in verify_data["data"]
+
+    token = verify_data["data"]["access_token"]
 
     # 3. Get Current User Profile
     headers = {"Authorization": f"Bearer {token}"}
@@ -45,3 +46,4 @@ async def test_user_registration_and_login(client: AsyncClient):
     assert me_res.status_code == 200
     me_data = me_res.json()
     assert me_data["data"]["full_name"] == "John Ashmora Citizen"
+    assert me_data["data"]["is_verified"] is True

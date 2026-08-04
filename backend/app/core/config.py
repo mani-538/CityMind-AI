@@ -1,5 +1,5 @@
 import json
-from typing import List, Union
+from typing import List, Union, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,13 +17,17 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str = ""
 
-    SMTP_HOST: str = ""
+    # SMTP & OTP Configuration
+    SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
-    FROM_EMAIL: str = "noreply@ashmora.gov"
+    EMAILS_FROM_EMAIL: str = "noreply@ashmora.gov"
+    EMAILS_FROM_NAME: str = "Ashmora CityMind Security"
+    SMTP_TLS: bool = True
+    EMAILS_ENABLED: bool = False
 
-    CORS_ORIGINS: Union[List[str], str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    CORS_ORIGINS: Union[List[str], str] = ["*"]
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
