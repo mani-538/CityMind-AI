@@ -17,15 +17,11 @@ class Settings(BaseSettings):
 
     GEMINI_API_KEY: str = ""
 
-    # SMTP & OTP Configuration
-    SMTP_HOST: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    SMTP_USER: str = ""
-    SMTP_PASSWORD: str = ""
+    # Email via Resend.com (https://resend.com — free 3k emails/month)
+    RESEND_API_KEY: str = ""                          # Set this in Render Environment vars
     EMAILS_FROM_EMAIL: str = "noreply@ashmora.gov"
     EMAILS_FROM_NAME: str = "Ashmora CityMind Security"
-    SMTP_TLS: bool = True
-    EMAILS_ENABLED: bool = False
+    EMAILS_ENABLED: bool = False                      # Set to true once RESEND_API_KEY is set
 
     CORS_ORIGINS: Union[List[str], str] = ["*"]
 
