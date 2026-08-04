@@ -3,10 +3,13 @@
 import React from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { Shield, Activity, User, LogOut, Bell, Compass } from 'lucide-react';
+import { Shield, Activity, User, LogOut, Bell, Compass, Cpu, CheckSquare } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
+
+  const isSuperAdmin = user?.roles.some((r) => r.name === 'Super Admin');
+  const isGovMember = user?.roles.some((r) => ['Government Officer', 'Department Admin', 'Super Admin'].includes(r.name));
 
   return (
     <nav className="glass-panel sticky top-0 z-50 px-6 py-3 border-b border-slate-700 flex items-center justify-between">
@@ -21,23 +24,35 @@ export const Navbar: React.FC = () => {
       </Link>
 
       <div className="flex items-center gap-6 text-sm">
-        <Link href="/map" className="flex items-center gap-2 text-slate-300 hover:text-cyan-400 transition">
+        <Link href="/map" className="flex items-center gap-1.5 text-slate-300 hover:text-cyan-400 transition font-medium">
           <Compass className="w-4 h-4" /> Live Map
         </Link>
         
         {user ? (
           <>
             {user.roles.some((r) => r.name === 'Citizen') && (
-              <Link href="/citizen" className="text-slate-300 hover:text-cyan-400 transition">
+              <Link href="/citizen" className="text-slate-300 hover:text-cyan-400 transition font-medium">
                 Citizen Portal
               </Link>
             )}
-            {user.roles.some((r) => ['Government Officer', 'Department Admin', 'Super Admin'].includes(r.name)) && (
+            
+            {isGovMember && (
               <Link href="/government" className="text-slate-300 hover:text-cyan-400 transition font-semibold text-cyan-400">
                 Gov Command Center
               </Link>
             )}
-            <Link href="/analytics" className="text-slate-300 hover:text-cyan-400 transition">
+
+            {isSuperAdmin && (
+              <Link href="/admin" className="text-amber-400 hover:text-amber-300 transition font-semibold flex items-center gap-1">
+                <CheckSquare className="w-4 h-4" /> Super Admin
+              </Link>
+            )}
+
+            <Link href="/agents" className="flex items-center gap-1.5 text-cyan-300 hover:text-cyan-200 transition font-medium">
+              <Cpu className="w-4 h-4 text-cyan-400" /> AI Agent Center
+            </Link>
+
+            <Link href="/analytics" className="text-slate-300 hover:text-cyan-400 transition font-medium">
               Analytics
             </Link>
 

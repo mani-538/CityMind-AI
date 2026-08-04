@@ -11,6 +11,18 @@ class ComplaintImageSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ComplaintTimelineSchema(BaseModel):
+    id: str
+    stage: str
+    title: str
+    description: Optional[str] = None
+    actor_role: Optional[str] = None
+    actor_name: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ComplaintCreate(BaseModel):
     title: str = Field(..., min_length=5, max_length=200)
     category: str = Field(..., description="Category of complaint (e.g. Fire Hazard, Traffic Congestion, Road Damage)")
@@ -21,8 +33,17 @@ class ComplaintCreate(BaseModel):
     image_urls: Optional[List[str]] = []
 
 
+class ComplaintVerifyRequest(BaseModel):
+    verification_method: str = Field(..., description="Phone Call, Email, Manual Site Verification, Internal Confirmation")
+    notes: Optional[str] = None
+
+
+class ComplaintRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=5, description="Reason for rejecting complaint")
+
+
 class ComplaintUpdateStatus(BaseModel):
-    status: str = Field(..., description="Submitted, AI Verified, Assigned, Work Started, Completed, Closed")
+    status: str = Field(..., description="Submitted, AI Verified, Verified, Assigned, Work Started, Completed, Closed, Rejected")
     notes: Optional[str] = None
     assigned_officer_id: Optional[str] = None
 
@@ -38,10 +59,17 @@ class ComplaintResponse(BaseModel):
     category: str
     description: str
     status: str
+    verification_status: str = "Pending_Verification"
     priority: str
     address: str
     latitude: float
     longitude: float
+
+    # Verification Metadata
+    verified_by: Optional[str] = None
+    verification_method: Optional[str] = None
+    verification_time: Optional[datetime] = None
+    verification_notes: Optional[str] = None
 
     # AI Fields
     ai_verified: bool
@@ -57,7 +85,8 @@ class ComplaintResponse(BaseModel):
     citizen_rating: Optional[int] = None
     citizen_feedback_text: Optional[str] = None
 
-    images: List[ComplaintImageSchema] = []
+    images: Optional[List[ComplaintImageSchema]] = []
+    timeline_events: Optional[List[ComplaintTimelineSchema]] = []
     created_at: datetime
     updated_at: datetime
 

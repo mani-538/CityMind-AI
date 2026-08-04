@@ -17,6 +17,9 @@ class UserRegister(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=100)
     phone_number: Optional[str] = None
     role_name: Optional[str] = "Citizen"  # Citizen, Government Officer, Department Admin, Super Admin
+    employee_id: Optional[str] = None
+    official_email: Optional[str] = None
+    organization_type: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -31,6 +34,10 @@ class OTPRequest(BaseModel):
 class OTPVerify(BaseModel):
     email: EmailStr
     otp_code: str = Field(..., min_length=6, max_length=6)
+
+
+class OrgApprovalAction(BaseModel):
+    admin_notes: Optional[str] = None
 
 
 class TokenResponse(BaseModel):
@@ -51,6 +58,13 @@ class UserResponse(BaseModel):
     phone_number: Optional[str] = None
     is_active: bool
     is_verified: bool
+    approval_status: str
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    employee_id: Optional[str] = None
+    official_email: Optional[str] = None
+    organization_type: Optional[str] = None
+    verification_notes: Optional[str] = None
     roles: List[RoleSchema] = []
     department_id: Optional[str] = None
     created_at: datetime

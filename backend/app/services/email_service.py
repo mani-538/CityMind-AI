@@ -6,10 +6,6 @@ from app.core.logging import logger
 class EmailService:
     @staticmethod
     def send_otp_email(to_email: str, otp_code: str, recipient_name: str) -> bool:
-        """
-        Send OTP verification email via Resend.com API.
-        Falls back to logging if EMAILS_ENABLED is False or RESEND_API_KEY is not set.
-        """
         subject = f"Your Ashmora CityMind Verification Code: {otp_code}"
         html_content = f"""
         <!DOCTYPE html>
@@ -63,39 +59,109 @@ class EmailService:
                 <div class="footer">
                     <strong style="color:#94a3b8">Ashmora Technologies Inc.</strong><br/>
                     Building the Intelligence Behind Tomorrow.<br/>
-                    <em>One City. One Intelligence. Infinite Possibilities.</em><br/><br/>
-                    This is an automated security message — please do not reply.
+                    <em>One City. One Intelligence. Infinite Possibilities.</em>
                 </div>
             </div>
         </body>
         </html>
         """
 
-        # --- Fallback: log OTP if email not enabled ---
         if not settings.EMAILS_ENABLED or not settings.RESEND_API_KEY:
-            logger.info(
-                f"[EMAIL DISABLED] OTP for {to_email}: {otp_code} "
-                f"(Set EMAILS_ENABLED=true and RESEND_API_KEY in environment to enable real emails)"
-            )
+            logger.info(f"[EMAIL DISABLED] OTP for {to_email}: {otp_code}")
             return True
 
-        # --- Send via Resend.com API ---
         try:
             resend.api_key = settings.RESEND_API_KEY
-
-            params: resend.Emails.SendParams = {
+            resend.Emails.send({
                 "from": f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>",
                 "to": [to_email],
                 "subject": subject,
                 "html": html_content,
-            }
-
-            response = resend.Emails.send(params)
-            email_id = response.get("id", "unknown")
-            logger.info(f"OTP email sent via Resend to {to_email} | email_id={email_id}")
+            })
             return True
-
         except Exception as e:
             logger.error(f"Resend failed for {to_email}: {e}")
-            logger.info(f"[FALLBACK] OTP for {to_email}: {otp_code}")
+            return False
+
+    @staticmethod
+    def send_approval_email(to_email: str, recipient_name: str, role_name: str, notes: str = "") -> bool:
+        subject = "Your Ashmora CityMind Account Has Been Approved!"
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 20px; }}
+                .container {{ max-width: 550px; margin: 0 auto; background: #1e293b; border-radius: 16px; padding: 32px; border: 1px solid #0284c7; }}
+                .status-badge {{ background: #10b981; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; display: inline-block; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <span class="status-badge">APPROVED</span>
+                <h2 style="color: #ffffff;">Welcome to Ashmora CityMind AI</h2>
+                <p style="color: #94a3b8;">Hello {recipient_name},</p>
+                <p style="color: #94a3b8;">Your registration request as <strong>{role_name}</strong> has been reviewed and <strong style="color: #10b981;">APPROVED</strong> by the Super Admin.</p>
+                {f'<p style="color: #cbd5e1; background: #0f172a; padding: 12px; border-radius: 8px;"><strong>Admin Note:</strong> {notes}</p>' if notes else ''}
+                <p style="color: #38bdf8;">You can now log in to access the Government Command Center and Department Portals.</p>
+                <p style="color: #64748b; font-size: 12px; border-top: 1px solid #334155; padding-top: 16px;">Ashmora Technologies Inc. — One City. One Intelligence. Infinite Possibilities.</p>
+            </div>
+        </body>
+        </html>
+        """
+        if not settings.EMAILS_ENABLED or not settings.RESEND_API_KEY:
+            logger.info(f"[EMAIL DISABLED] Approval email for {to_email}")
+            return True
+        try:
+            resend.api_key = settings.RESEND_API_KEY
+            resend.Emails.send({
+                "from": f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+            })
+            return True
+        except Exception as e:
+            logger.error(f"Resend approval failed for {to_email}: {e}")
+            return False
+
+    @staticmethod
+    def send_rejection_email(to_email: str, recipient_name: str, notes: str = "") -> bool:
+        subject = "Update Regarding Your Ashmora CityMind Organization Account"
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 20px; }}
+                .container {{ max-width: 550px; margin: 0 auto; background: #1e293b; border-radius: 16px; padding: 32px; border: 1px solid #ef4444; }}
+                .status-badge {{ background: #ef4444; color: white; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; display: inline-block; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <span class="status-badge">REJECTED</span>
+                <h2 style="color: #ffffff;">Account Request Status</h2>
+                <p style="color: #94a3b8;">Hello {recipient_name},</p>
+                <p style="color: #94a3b8;">Your organization registration request has been reviewed and <strong style="color: #ef4444;">REJECTED</strong>.</p>
+                {f'<p style="color: #cbd5e1; background: #0f172a; padding: 12px; border-radius: 8px;"><strong>Reason / Notes:</strong> {notes}</p>' if notes else ''}
+                <p style="color: #64748b; font-size: 12px; border-top: 1px solid #334155; padding-top: 16px;">If you believe this was an error, please contact your department administrator or email support@ashmora.gov.</p>
+            </div>
+        </body>
+        </html>
+        """
+        if not settings.EMAILS_ENABLED or not settings.RESEND_API_KEY:
+            logger.info(f"[EMAIL DISABLED] Rejection email for {to_email}")
+            return True
+        try:
+            resend.api_key = settings.RESEND_API_KEY
+            resend.Emails.send({
+                "from": f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_content,
+            })
+            return True
+        except Exception as e:
+            logger.error(f"Resend rejection failed for {to_email}: {e}")
             return False

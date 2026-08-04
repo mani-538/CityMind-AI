@@ -1,13 +1,15 @@
 import secrets
 from datetime import datetime, timedelta, timezone
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.db.session import get_db
 from app.repositories.user_repository import UserRepository
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token, decode_token
-from app.schemas.user import UserRegister, UserLogin, TokenResponse, UserResponse, RefreshTokenRequest, OTPRequest, OTPVerify
+from app.schemas.user import UserRegister, UserLogin, TokenResponse, UserResponse, RefreshTokenRequest, OTPRequest, OTPVerify, OrgApprovalAction
 from app.schemas.common import ResponseEnvelope
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_role
 from app.models.user import User, Role
 from app.services.email_service import EmailService
 
@@ -30,8 +32,11 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
             detail="User with this email already exists"
         )
 
-    # Get requested role or default to 'Citizen'
+    # Determine requested role & approval policy
     role_name = user_in.role_name or "Citizen"
+    is_org_member = role_name in ["Government Officer", "Department Admin", "Organization Member"]
+    approval_status = "Pending" if is_org_member else "Approved"
+
     role = await user_repo.get_role_by_name(role_name)
     if not role:
         role = Role(name=role_name, description=f"{role_name} User Role")
@@ -51,6 +56,10 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
         "phone_number": user_in.phone_number,
         "is_active": True,
         "is_verified": False,
+        "approval_status": approval_status,
+        "employee_id": user_in.employee_id,
+        "official_email": user_in.official_email,
+        "organization_type": user_in.organization_type,
         "otp_code": otp_code,
         "otp_expires_at": otp_expires,
     }
@@ -62,14 +71,21 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
     # Send OTP Email
     EmailService.send_otp_email(new_user.email, otp_code, new_user.full_name)
 
+    msg = (
+        "Registration submitted. Since you registered as an Organization Member, your account requires Super Admin approval before you can log in."
+        if is_org_member
+        else "Registration successful. A 6-digit verification OTP has been sent to your email."
+    )
+
     return ResponseEnvelope(
         success=True,
-        message="Registration successful. A 6-digit verification OTP has been sent to your email.",
+        message=msg,
         data={
             "user_id": new_user.id,
             "email": new_user.email,
+            "approval_status": approval_status,
             "otp_sent": True,
-            "demo_otp_code": otp_code,  # Provided for easy local/demo verification
+            "demo_otp_code": otp_code,
         }
     )
 
@@ -117,6 +133,13 @@ async def verify_otp(otp_in: OTPVerify, db: AsyncSession = Depends(get_db)):
         if datetime.now(timezone.utc) > expires_at:
             raise HTTPException(status_code=400, detail="OTP verification code has expired. Please request a new code.")
 
+    # Check approval status for Org accounts
+    if user.approval_status == "Pending":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="OTP verified, but your Organization account is pending Super Admin approval. You will receive an email once approved."
+        )
+
     # Mark user as verified & clear OTP
     user.is_verified = True
     user.otp_code = None
@@ -147,6 +170,18 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password"
+        )
+
+    if user.approval_status == "Pending":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your Organization Account registration is PENDING Super Admin approval. You will receive an email once approved."
+        )
+
+    if user.approval_status == "Rejected":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Account application was REJECTED by Super Admin. Reason: {user.verification_notes or 'Not specified'}"
         )
 
     user_roles = [r.name for r in user.roles]
@@ -201,4 +236,91 @@ async def get_current_user_profile(current_user: User = Depends(get_current_user
         success=True,
         message="User profile retrieved successfully",
         data=UserResponse.model_validate(current_user)
+    )
+
+
+# ----------------------------------------------------------------------
+# Super Admin Organization Approval Endpoints
+# ----------------------------------------------------------------------
+
+@router.get(
+    "/organization-requests",
+    response_model=ResponseEnvelope[List[UserResponse]],
+    dependencies=[Depends(require_role(["Super Admin"]))]
+)
+async def list_organization_requests(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(User).order_by(User.created_at.desc())
+    )
+    users = result.scalars().unique().all()
+    # Filter users who are Organization Members or have pending/reviewed approval status
+    org_users = [u for u in users if u.approval_status in ["Pending", "Approved", "Rejected"] and any(r.name != "Citizen" for r in u.roles)]
+    
+    return ResponseEnvelope(
+        success=True,
+        message="Organization approval requests retrieved",
+        data=[UserResponse.model_validate(u) for u in org_users]
+    )
+
+
+@router.post(
+    "/organization-requests/{user_id}/approve",
+    response_model=ResponseEnvelope[UserResponse],
+    dependencies=[Depends(require_role(["Super Admin"]))]
+)
+async def approve_organization_request(
+    user_id: str,
+    action: OrgApprovalAction,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User request not found")
+
+    user.approval_status = "Approved"
+    user.approved_by = current_user.full_name
+    user.approved_at = datetime.now(timezone.utc)
+    user.verification_notes = action.admin_notes or "Approved by Super Admin"
+    await db.commit()
+
+    role_name = user.roles[0].name if user.roles else "Organization Member"
+    EmailService.send_approval_email(user.email, user.full_name, role_name, action.admin_notes or "")
+
+    return ResponseEnvelope(
+        success=True,
+        message=f"Organization member {user.full_name} has been APPROVED.",
+        data=UserResponse.model_validate(user)
+    )
+
+
+@router.post(
+    "/organization-requests/{user_id}/reject",
+    response_model=ResponseEnvelope[UserResponse],
+    dependencies=[Depends(require_role(["Super Admin"]))]
+)
+async def reject_organization_request(
+    user_id: str,
+    action: OrgApprovalAction,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    user_repo = UserRepository(db)
+    user = await user_repo.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User request not found")
+
+    user.approval_status = "Rejected"
+    user.approved_by = current_user.full_name
+    user.approved_at = datetime.now(timezone.utc)
+    user.verification_notes = action.admin_notes or "Rejected by Super Admin"
+    await db.commit()
+
+    EmailService.send_rejection_email(user.email, user.full_name, action.admin_notes or "")
+
+    return ResponseEnvelope(
+        success=True,
+        message=f"Organization member {user.full_name} has been REJECTED.",
+        data=UserResponse.model_validate(user)
     )

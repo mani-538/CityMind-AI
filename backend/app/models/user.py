@@ -34,6 +34,16 @@ class User(Base, UUIDMixin, TimestampMixin, SoftDeleteMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Organization Member Approval Status
+    # Options: Approved (default for Citizens), Pending (for Org signups), Rejected
+    approval_status: Mapped[str] = mapped_column(String(30), default="Approved", nullable=False, index=True)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    employee_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    official_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    organization_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    verification_notes: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
     # OTP Verification Fields
     otp_code: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
     otp_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

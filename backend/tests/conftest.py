@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from app.main import app
 from app.db.base import Base
 from app.db.session import get_db
+from app.db.seed import seed_database_if_empty
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -25,6 +26,8 @@ def event_loop():
 async def setup_db():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    async with TestingSessionLocal() as session:
+        await seed_database_if_empty(session)
     yield
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

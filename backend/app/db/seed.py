@@ -5,7 +5,7 @@ from app.db.session import AsyncSessionLocal, engine
 from app.db.base import Base
 from app.models.user import User, Role
 from app.models.department import Department
-from app.models.complaint import Complaint, ComplaintStatus, ComplaintPriority, ComplaintCategory, ComplaintImage
+from app.models.complaint import Complaint, ComplaintStatus, ComplaintPriority, ComplaintCategory, ComplaintImage, ComplaintTimeline, VerificationStatus
 from app.models.agent import AgentLog
 from app.core.security import get_password_hash
 
@@ -61,6 +61,7 @@ async def seed_database_if_empty(db: AsyncSession):
         phone_number="+1 (555) 019-2834",
         is_active=True,
         is_verified=True,
+        approval_status="Approved",
     )
     citizen.roles.append(role_objs["Citizen"])
     db.add(citizen)
@@ -72,6 +73,7 @@ async def seed_database_if_empty(db: AsyncSession):
         phone_number="+1 (555) 019-8822",
         is_active=True,
         is_verified=True,
+        approval_status="Approved",
         department_id=dept_objs["FIRE"].id,
     )
     officer.roles.append(role_objs["Government Officer"])
@@ -84,6 +86,7 @@ async def seed_database_if_empty(db: AsyncSession):
         phone_number="+1 (555) 019-9944",
         is_active=True,
         is_verified=True,
+        approval_status="Approved",
         department_id=dept_objs["TRAFFIC"].id,
     )
     dept_admin.roles.append(role_objs["Department Admin"])
@@ -96,9 +99,27 @@ async def seed_database_if_empty(db: AsyncSession):
         phone_number="+1 (555) 019-0000",
         is_active=True,
         is_verified=True,
+        approval_status="Approved",
     )
     super_admin.roles.append(role_objs["Super Admin"])
     db.add(super_admin)
+
+    # Pending Org User for Super Admin Approval Testing
+    pending_officer = User(
+        email="pending.officer@ashmora.gov",
+        hashed_password=hashed_pwd,
+        full_name="Lt. David Sterling (Pending Officer)",
+        phone_number="+1 (555) 019-7711",
+        is_active=True,
+        is_verified=True,
+        approval_status="Pending",
+        employee_id="EMP-9921",
+        official_email="d.sterling@cityfd.gov",
+        organization_type="Fire & Rescue Bureau",
+        department_id=dept_objs["FIRE"].id,
+    )
+    pending_officer.roles.append(role_objs["Government Officer"])
+    db.add(pending_officer)
 
     await db.flush()
 
@@ -112,7 +133,10 @@ async def seed_database_if_empty(db: AsyncSession):
             "latitude": 40.7306,
             "longitude": -73.9352,
             "priority": ComplaintPriority.CRITICAL.value,
-            "status": ComplaintStatus.AI_VERIFIED.value,
+            "status": ComplaintStatus.VERIFIED.value,
+            "verification_status": VerificationStatus.VERIFIED.value,
+            "verified_by": "Captain Alex Vance",
+            "verification_method": "Manual Site Verification",
             "ai_verified": True,
             "ai_confidence_score": 0.98,
             "ai_summary": "CRITICAL HAZARD DETECTED: Chemical storage tank fire. Immediate evacuation of 150m perimeter recommended.",
@@ -130,6 +154,9 @@ async def seed_database_if_empty(db: AsyncSession):
             "longitude": -74.0060,
             "priority": ComplaintPriority.HIGH.value,
             "status": ComplaintStatus.ASSIGNED.value,
+            "verification_status": VerificationStatus.VERIFIED.value,
+            "verified_by": "Director Elena Rostova",
+            "verification_method": "Phone Call Verification",
             "ai_verified": True,
             "ai_confidence_score": 0.92,
             "ai_summary": "High volume main pressure loss. Traffic lane obstruction detected.",
@@ -139,20 +166,18 @@ async def seed_database_if_empty(db: AsyncSession):
             "image": "https://images.unsplash.com/photo-1584467735871-8e85353a8413",
         },
         {
-            "title": "Multi-Vehicle Traffic Gridlock on Grand Expressway",
-            "category": ComplaintCategory.TRAFFIC_CONGESTION.value,
-            "description": "Stalled delivery truck causing 3-mile tailback across east lane.",
-            "address": "Grand Expressway Exit 12",
-            "latitude": 40.7215,
-            "longitude": -73.9912,
-            "priority": ComplaintPriority.MEDIUM.value,
-            "status": ComplaintStatus.WORK_STARTED.value,
-            "ai_verified": True,
-            "ai_confidence_score": 0.89,
-            "ai_summary": "Traffic velocity dropped to 4 mph. Secondary congestion building.",
-            "ai_recommended_action": "Activate signal override plan B-12 and dispatch heavy towing unit.",
+            "title": "Unverified Streetlamp Failure on Elm Street",
+            "category": ComplaintCategory.STREET_LIGHTING.value,
+            "description": "3 consecutive street lights out along dark residential corridor.",
+            "address": "210 Elm Street, Ashmora",
+            "latitude": 40.7250,
+            "longitude": -73.9800,
+            "priority": ComplaintPriority.LOW.value,
+            "status": ComplaintStatus.SUBMITTED.value,
+            "verification_status": VerificationStatus.PENDING_VERIFICATION.value,
+            "ai_verified": False,
             "citizen_id": citizen.id,
-            "department_id": dept_objs["TRAFFIC"].id,
+            "department_id": dept_objs["SANITATION"].id,
             "image": "https://images.unsplash.com/photo-1506521781263-d8422e82f27a",
         },
     ]
@@ -165,6 +190,17 @@ async def seed_database_if_empty(db: AsyncSession):
 
         img = ComplaintImage(complaint_id=complaint.id, image_url=img_url)
         db.add(img)
+
+        # Timeline event
+        timeline = ComplaintTimeline(
+            complaint_id=complaint.id,
+            stage="Submitted",
+            title="Complaint Registered",
+            description=f"Incident registered by citizen {citizen.full_name}",
+            actor_role="Citizen",
+            actor_name=citizen.full_name,
+        )
+        db.add(timeline)
 
     # 5. Create Sample Agent Logs
     logs_data = [

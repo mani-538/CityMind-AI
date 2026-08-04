@@ -1,7 +1,7 @@
 from app.db.base import Base
 from app.models.user import User, Role, user_roles_table
 from app.models.department import Department, Location
-from app.models.complaint import Complaint, ComplaintImage, ComplaintAssignment, ComplaintStatus, ComplaintPriority, ComplaintCategory
+from app.models.complaint import Complaint, ComplaintImage, ComplaintAssignment, ComplaintTimeline, ComplaintStatus, VerificationStatus, ComplaintPriority, ComplaintCategory
 from app.models.notification import Notification
 from app.models.chat import ChatHistory
 from app.models.agent import AgentLog
@@ -18,7 +18,9 @@ __all__ = [
     "Complaint",
     "ComplaintImage",
     "ComplaintAssignment",
+    "ComplaintTimeline",
     "ComplaintStatus",
+    "VerificationStatus",
     "ComplaintPriority",
     "ComplaintCategory",
     "Notification",

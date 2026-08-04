@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from app.repositories.base import BaseRepository
-from app.models.complaint import Complaint, ComplaintImage
+from app.models.complaint import Complaint, ComplaintImage, ComplaintTimeline
 
 
 class ComplaintRepository(BaseRepository[Complaint]):
@@ -13,7 +13,11 @@ class ComplaintRepository(BaseRepository[Complaint]):
     async def get_with_details(self, complaint_id: str) -> Optional[Complaint]:
         stmt = (
             select(Complaint)
-            .options(selectinload(Complaint.images), selectinload(Complaint.assignments))
+            .options(
+                selectinload(Complaint.images),
+                selectinload(Complaint.assignments),
+                selectinload(Complaint.timeline_events)
+            )
             .where(Complaint.id == complaint_id)
         )
         result = await self.db.execute(stmt)
@@ -22,7 +26,7 @@ class ComplaintRepository(BaseRepository[Complaint]):
     async def get_by_citizen(self, citizen_id: str, skip: int = 0, limit: int = 50) -> List[Complaint]:
         stmt = (
             select(Complaint)
-            .options(selectinload(Complaint.images))
+            .options(selectinload(Complaint.images), selectinload(Complaint.timeline_events))
             .where(Complaint.citizen_id == citizen_id)
             .order_by(Complaint.created_at.desc())
             .offset(skip)
@@ -34,7 +38,7 @@ class ComplaintRepository(BaseRepository[Complaint]):
     async def get_by_department(self, department_id: str, skip: int = 0, limit: int = 50) -> List[Complaint]:
         stmt = (
             select(Complaint)
-            .options(selectinload(Complaint.images))
+            .options(selectinload(Complaint.images), selectinload(Complaint.timeline_events))
             .where(Complaint.department_id == department_id)
             .order_by(Complaint.created_at.desc())
             .offset(skip)
@@ -43,8 +47,36 @@ class ComplaintRepository(BaseRepository[Complaint]):
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_active_map_markers(self) -> List[Complaint]:
-        stmt = select(Complaint).options(selectinload(Complaint.images)).where(Complaint.status != "Closed")
+    async def get_verified_map_markers(self) -> List[Complaint]:
+        # Public & Citizen maps: show ONLY Verified complaints
+        stmt = (
+            select(Complaint)
+            .options(selectinload(Complaint.images), selectinload(Complaint.timeline_events))
+            .where(Complaint.verification_status == "Verified")
+            .where(Complaint.status != "Closed")
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_all_map_markers_superadmin(self) -> List[Complaint]:
+        # Super Admin & Gov map: show all active complaints regardless of verification status
+        stmt = (
+            select(Complaint)
+            .options(selectinload(Complaint.images), selectinload(Complaint.timeline_events))
+            .where(Complaint.status != "Closed")
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_pending_verification(self, department_id: Optional[str] = None, skip: int = 0, limit: int = 50) -> List[Complaint]:
+        stmt = (
+            select(Complaint)
+            .options(selectinload(Complaint.images), selectinload(Complaint.timeline_events))
+            .where(Complaint.verification_status == "Pending_Verification")
+        )
+        if department_id:
+            stmt = stmt.where(Complaint.department_id == department_id)
+        stmt = stmt.order_by(Complaint.created_at.desc()).offset(skip).limit(limit)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
@@ -53,3 +85,24 @@ class ComplaintRepository(BaseRepository[Complaint]):
         self.db.add(image)
         await self.db.flush()
         return image
+
+    async def add_timeline_event(
+        self,
+        complaint_id: str,
+        stage: str,
+        title: str,
+        description: Optional[str] = None,
+        actor_role: Optional[str] = None,
+        actor_name: Optional[str] = None,
+    ) -> ComplaintTimeline:
+        timeline = ComplaintTimeline(
+            complaint_id=complaint_id,
+            stage=stage,
+            title=title,
+            description=description,
+            actor_role=actor_role,
+            actor_name=actor_name,
+        )
+        self.db.add(timeline)
+        await self.db.flush()
+        return timeline
