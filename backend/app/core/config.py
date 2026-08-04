@@ -1,6 +1,6 @@
 import json
-from typing import List, Union, Optional
-from pydantic import Field, field_validator
+from typing import List, Union
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,15 +13,14 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./citymind.db"
-    REDIS_URL: str = "redis://localhost:6379/0"
 
     GEMINI_API_KEY: str = ""
 
-    # Email via Resend.com (https://resend.com — free 3k emails/month)
-    RESEND_API_KEY: str = ""                          # Set this in Render Environment vars
+    # Email OTP — Resend.com (https://resend.com — free 3k emails/month)
+    EMAILS_ENABLED: bool = False
+    RESEND_API_KEY: str = ""
     EMAILS_FROM_EMAIL: str = "noreply@ashmora.gov"
     EMAILS_FROM_NAME: str = "Ashmora CityMind Security"
-    EMAILS_ENABLED: bool = False                      # Set to true once RESEND_API_KEY is set
 
     CORS_ORIGINS: Union[List[str], str] = ["*"]
 
