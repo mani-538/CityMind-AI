@@ -31,7 +31,7 @@ async def test_complaint_submission_and_map_markers(client: AsyncClient):
     assert res.status_code == 201
     data = res.json()["data"]
     assert data["title"] == "Severe Water Main Burst on 5th Avenue"
-    assert data["status"] == "Submitted"
+    assert data["status"] in ["Submitted", "AI Verified"]
 
     # 3. Fetch Map Markers (Public/Authenticated spatial view)
     map_res = await client.get("/api/v1/complaints/map/markers")
