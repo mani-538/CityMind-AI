@@ -91,13 +91,16 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
     await user_repo.assign_role_to_user(new_user, role)
     await db.commit()
 
-    EmailService.send_otp_email(new_user.email, otp_code, new_user.full_name)
+    otp_sent = EmailService.send_otp_email(new_user.email, otp_code, new_user.full_name)
 
     msg = (
         "Registration submitted. Since you registered as an Organization Member, your account requires Super Admin approval before you can log in."
         if is_org_member
         else "Registration successful. A 6-digit verification OTP has been sent to your email."
     )
+
+    if not otp_sent:
+        msg = "Account created, but the verification email could not be sent. Please request a new code later."
 
     return ResponseEnvelope(
         success=True,
@@ -106,8 +109,7 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
             "user_id": new_user.id,
             "email": new_user.email,
             "approval_status": approval_status,
-            "otp_sent": True,
-            "demo_otp_code": otp_code,
+            "otp_sent": bool(otp_sent),
         }
     )
 
@@ -126,15 +128,17 @@ async def request_otp(otp_req: OTPRequest, db: AsyncSession = Depends(get_db)):
     user.otp_expires_at = otp_expires
     await db.commit()
 
-    EmailService.send_otp_email(user.email, otp_code, user.full_name)
+    otp_sent = EmailService.send_otp_email(user.email, otp_code, user.full_name)
 
     return ResponseEnvelope(
-        success=True,
-        message="A new 6-digit verification OTP has been dispatched.",
+        success=bool(otp_sent),
+        message=(
+            "A new 6-digit verification OTP has been dispatched."
+            if otp_sent else "The verification email could not be sent. Please try again later."
+        ),
         data={
             "email": user.email,
-            "otp_sent": True,
-            "demo_otp_code": otp_code,
+            "otp_sent": bool(otp_sent),
         }
     )
 

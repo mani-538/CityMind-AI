@@ -3,12 +3,15 @@ from httpx import AsyncClient
 
 
 @pytest.fixture(autouse=True)
-def suppress_otp_emails(monkeypatch):
-    # Tests must not send real email or depend on SMTP configuration.
-    monkeypatch.setattr(
-        "app.api.v1.endpoints.auth.EmailService.send_otp_email",
-        lambda *args, **kwargs: None,
-    )
+def captured_otp_emails(monkeypatch):
+    sent = {}
+
+    def capture(to_email, otp_code, recipient_name):
+        sent[to_email] = otp_code
+        return True
+
+    monkeypatch.setattr("app.api.v1.endpoints.auth.EmailService.send_otp_email", capture)
+    return sent
 
 
 @pytest.mark.asyncio
@@ -21,7 +24,7 @@ async def test_health_check(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_user_registration_and_otp_verification(client: AsyncClient):
+async def test_user_registration_and_otp_verification(client: AsyncClient, captured_otp_emails):
     # 1. Register User & Receive OTP
     reg_payload = {
         "email": "otp_citizen@ashmora.gov",
@@ -33,9 +36,10 @@ async def test_user_registration_and_otp_verification(client: AsyncClient):
     assert reg_res.status_code == 201
     reg_data = reg_res.json()
     assert reg_data["success"] is True
-    assert "demo_otp_code" in reg_data["data"]
+    assert "demo_otp_code" not in reg_data["data"]
+    assert reg_data["data"]["otp_sent"] is True
 
-    otp_code = reg_data["data"]["demo_otp_code"]
+    otp_code = captured_otp_emails[reg_payload["email"]]
 
     # 2. Verify OTP
     verify_res = await client.post("/api/v1/auth/verify-otp", json={
@@ -125,3 +129,42 @@ async def test_registration_defaults_to_citizen(client: AsyncClient):
     })
     assert response.status_code == 201
     assert response.json()["data"]["approval_status"] == "Approved"
+
+
+@pytest.mark.asyncio
+async def test_resend_does_not_expose_otp(client: AsyncClient, captured_otp_emails):
+    email = "resend-security@example.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": email, "password": "SecurePassword123!", "full_name": "Resend Test",
+    })
+    response = await client.post("/api/v1/auth/request-otp", json={"email": email})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["data"]["otp_sent"] is True
+    assert "demo_otp_code" not in data["data"]
+    assert captured_otp_emails[email] not in response.text
+    verified = await client.post("/api/v1/auth/verify-otp", json={
+        "email": email, "otp_code": captured_otp_emails[email],
+    })
+    assert verified.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_email_failure_is_reported(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.auth.EmailService.send_otp_email",
+        lambda *args, **kwargs: False,
+    )
+    email = "email-failure@example.com"
+    response = await client.post("/api/v1/auth/register", json={
+        "email": email, "password": "SecurePassword123!", "full_name": "Delivery Test",
+    })
+    assert response.status_code == 201
+    assert response.json()["data"]["otp_sent"] is False
+    assert "demo_otp_code" not in response.json()["data"]
+    resend = await client.post("/api/v1/auth/request-otp", json={"email": email})
+    assert resend.status_code == 200
+    assert resend.json()["success"] is False
+    assert resend.json()["data"]["otp_sent"] is False
+    assert "demo_otp_code" not in resend.json()["data"]

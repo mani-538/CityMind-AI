@@ -14,7 +14,6 @@ export function VerifyOtpForm() {
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
-  const [demoOtp, setDemoOtp] = useState('');
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { login } = useAuth();
@@ -73,7 +72,10 @@ export function VerifyOtpForm() {
     setError('');
     try {
       const res = await apiClient.post('/auth/request-otp', { email });
-      if (res.data.data?.demo_otp_code) setDemoOtp(res.data.data.demo_otp_code);
+      if (!res.data.success || !res.data.data?.otp_sent) {
+        setError(res.data.message || 'The verification email could not be sent. Please try again later.');
+        return;
+      }
       setOtpDigits(['', '', '', '', '', '']);
       setResendSuccess(true);
       setTimeout(() => setResendSuccess(false), 4000);
@@ -94,7 +96,7 @@ export function VerifyOtpForm() {
         </div>
         <h1 className="text-2xl font-bold text-white">Email Verification</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Code sent to <span className="text-cyan-400 font-semibold">{email || 'your email'}</span>
+          Enter the code emailed to <span className="text-cyan-400 font-semibold">{email || 'your email'}</span>
         </p>
       </div>
 
@@ -111,21 +113,6 @@ export function VerifyOtpForm() {
         <div className="mb-4 p-3 rounded-xl bg-green-950/60 border border-green-800 text-green-300 text-sm flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-green-400" />
           New OTP dispatched! Check your inbox.
-        </div>
-      )}
-
-      {/* Dev OTP hint */}
-      {demoOtp && (
-        <div className="mb-5 p-3 rounded-xl bg-cyan-950/50 border border-cyan-800/50 text-center">
-          <p className="text-xs text-cyan-500 font-semibold uppercase tracking-wider mb-1">Dev Mode — OTP Code</p>
-          <button
-            type="button"
-            onClick={() => setOtpDigits(demoOtp.split(''))}
-            className="text-2xl font-mono font-bold tracking-widest text-cyan-300 hover:text-white transition"
-          >
-            {demoOtp}
-          </button>
-          <p className="text-[10px] text-slate-500 mt-0.5">Click to auto-fill</p>
         </div>
       )}
 

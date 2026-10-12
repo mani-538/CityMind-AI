@@ -67,8 +67,8 @@ class EmailService:
         """
 
         if not settings.EMAILS_ENABLED or not settings.RESEND_API_KEY:
-            logger.info(f"[EMAIL DISABLED] OTP for {to_email}: {otp_code}")
-            return True
+            logger.warning("OTP email delivery is not configured.")
+            return False
 
         try:
             resend.api_key = settings.RESEND_API_KEY
@@ -80,7 +80,7 @@ class EmailService:
             })
             return True
         except Exception as e:
-            logger.error(f"Resend failed for {to_email}: {e}")
+            logger.error("OTP email delivery failed.")
             return False
 
     @staticmethod
