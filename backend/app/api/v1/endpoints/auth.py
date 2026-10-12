@@ -44,8 +44,22 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
             detail="User with this email already exists"
         )
 
-    role_name = user_in.role_name or "Citizen"
-    is_org_member = role_name in ["Government Officer", "Department Admin", "Organization Member"]
+    role_name = (user_in.role_name or "Citizen").strip()
+
+    allowed_registration_roles = {
+        "Citizen",
+        "Government Officer",
+        "Department Admin",
+        "Organization Member",
+    }
+
+    if role_name not in allowed_registration_roles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This role is not available for public registration."
+        )
+
+    is_org_member = role_name != "Citizen"
     approval_status = "Pending" if is_org_member else "Approved"
 
     role = await user_repo.get_role_by_name(role_name)
