@@ -1,17 +1,34 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.core.security import create_access_token, create_refresh_token
+from app.db.session import get_db
+from app.main import app
+from app.models.user import User
 
 
-@pytest.fixture(autouse=True)
-def captured_otp_emails(monkeypatch):
-    sent = {}
+async def update_account(email: str, **updates):
+    session_generator = app.dependency_overrides[get_db]()
+    try:
+        session = await anext(session_generator)
+        user = await session.scalar(select(User).where(User.email == email))
+        assert user is not None
+        for field, value in updates.items():
+            setattr(user, field, value)
+        await session.commit()
+        return user.id
+    finally:
+        await session_generator.aclose()
 
-    def capture(to_email, otp_code, recipient_name):
-        sent[to_email] = otp_code
-        return True
 
-    monkeypatch.setattr("app.api.v1.endpoints.auth.EmailService.send_otp_email", capture)
-    return sent
+async def read_account(email: str):
+    session_generator = app.dependency_overrides[get_db]()
+    try:
+        session = await anext(session_generator)
+        return await session.scalar(select(User).where(User.email == email))
+    finally:
+        await session_generator.aclose()
 
 
 @pytest.mark.asyncio
@@ -168,3 +185,180 @@ async def test_email_failure_is_reported(client: AsyncClient, monkeypatch):
     assert resend.json()["success"] is False
     assert resend.json()["data"]["otp_sent"] is False
     assert "demo_otp_code" not in resend.json()["data"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"is_active": False},
+        {"is_verified": False},
+        {"approval_status": "Pending"},
+        {"approval_status": "Rejected"},
+    ],
+)
+async def test_login_rejects_ineligible_accounts(client: AsyncClient, updates):
+    email = "citizen@ashmora.gov"
+    await update_account(email, **updates)
+
+    response = await client.post("/api/v1/auth/login", json={
+        "email": email,
+        "password": "DemoPassword123!",
+    })
+
+    assert response.status_code == 403
+    assert "access_token" not in response.text
+    assert "refresh_token" not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"is_active": False},
+        {"is_verified": False},
+        {"approval_status": "Pending"},
+        {"approval_status": "Rejected"},
+    ],
+)
+async def test_existing_tokens_cannot_bypass_account_eligibility(client: AsyncClient, updates):
+    email = "citizen@ashmora.gov"
+    user = await read_account(email)
+    access_token = create_access_token(user.id, ["Citizen"])
+    refresh_token = create_refresh_token(user.id)
+    await update_account(email, **updates)
+
+    protected = await client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    optional_auth = await client.get(
+        "/api/v1/complaints/map/markers",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    refreshed = await client.post("/api/v1/auth/refresh", json={
+        "refresh_token": refresh_token,
+    })
+
+    assert protected.status_code == 403
+    assert optional_auth.status_code == 403
+    assert refreshed.status_code == 403
+    assert "access_token" not in refreshed.text
+    assert "refresh_token" not in refreshed.text
+
+
+@pytest.mark.asyncio
+async def test_pending_organization_otp_verifies_email_without_tokens(
+    client: AsyncClient, captured_otp_emails
+):
+    email = "pending-verified@example.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": email,
+        "password": "SecurePassword123!",
+        "full_name": "Pending Verified Officer",
+        "role_name": "Government Officer",
+    })
+
+    response = await client.post("/api/v1/auth/verify-otp", json={
+        "email": email,
+        "otp_code": captured_otp_emails[email],
+    })
+
+    assert response.status_code == 403
+    assert "access_token" not in response.text
+    assert "refresh_token" not in response.text
+    user = await read_account(email)
+    assert user.is_verified is True
+    assert user.otp_code is None
+    assert user.otp_expires_at is None
+
+    pending_login = await client.post("/api/v1/auth/login", json={
+        "email": email,
+        "password": "SecurePassword123!",
+    })
+    assert pending_login.status_code == 403
+
+    admin_login = await client.post("/api/v1/auth/login", json={
+        "email": "superadmin@ashmora.gov",
+        "password": "DemoPassword123!",
+    })
+    approval = await client.post(
+        f"/api/v1/auth/organization-requests/{user.id}/approve",
+        json={"admin_notes": "Identity confirmed"},
+        headers={"Authorization": f"Bearer {admin_login.json()['data']['access_token']}"},
+    )
+    assert approval.status_code == 200
+
+    approved_login = await client.post("/api/v1/auth/login", json={
+        "email": email,
+        "password": "SecurePassword123!",
+    })
+    assert approved_login.status_code == 200
+    assert "access_token" in approved_login.json()["data"]
+
+
+@pytest.mark.asyncio
+async def test_approval_before_email_verification_still_requires_otp(
+    client: AsyncClient, captured_otp_emails
+):
+    email = "approved-unverified@example.com"
+    registration = await client.post("/api/v1/auth/register", json={
+        "email": email,
+        "password": "SecurePassword123!",
+        "full_name": "Approved Before OTP",
+        "role_name": "Department Admin",
+    })
+    user_id = registration.json()["data"]["user_id"]
+    admin_login = await client.post("/api/v1/auth/login", json={
+        "email": "superadmin@ashmora.gov",
+        "password": "DemoPassword123!",
+    })
+    approval = await client.post(
+        f"/api/v1/auth/organization-requests/{user_id}/approve",
+        json={},
+        headers={"Authorization": f"Bearer {admin_login.json()['data']['access_token']}"},
+    )
+    assert approval.status_code == 200
+
+    login = await client.post("/api/v1/auth/login", json={
+        "email": email,
+        "password": "SecurePassword123!",
+    })
+    assert login.status_code == 403
+
+    verified = await client.post("/api/v1/auth/verify-otp", json={
+        "email": email,
+        "otp_code": captured_otp_emails[email],
+    })
+    assert verified.status_code == 200
+    assert "access_token" in verified.json()["data"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"is_active": False},
+        {"approval_status": "Rejected"},
+    ],
+)
+async def test_otp_never_issues_tokens_to_inactive_or_rejected_accounts(
+    client: AsyncClient, captured_otp_emails, updates
+):
+    email = "blocked-otp@example.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": email,
+        "password": "SecurePassword123!",
+        "full_name": "Blocked OTP User",
+    })
+    await update_account(email, **updates)
+
+    response = await client.post("/api/v1/auth/verify-otp", json={
+        "email": email,
+        "otp_code": captured_otp_emails[email],
+    })
+
+    assert response.status_code == 403
+    assert "access_token" not in response.text
+    assert "refresh_token" not in response.text
+    assert (await read_account(email)).is_verified is False

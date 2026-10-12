@@ -21,7 +21,7 @@ from app.schemas.user import (
     DetailedProfileResponse,
 )
 from app.schemas.common import ResponseEnvelope
-from app.api.deps import get_current_user, require_role
+from app.api.deps import ensure_account_eligible, get_current_user, require_role
 from app.models.user import User, Role
 from app.models.complaint import Complaint
 from app.services.email_service import EmailService
@@ -158,16 +158,27 @@ async def verify_otp(otp_in: OTPVerify, db: AsyncSession = Depends(get_db)):
         if datetime.now(timezone.utc) > expires_at:
             raise HTTPException(status_code=400, detail="OTP verification code has expired. Please request a new code.")
 
-    if user.approval_status == "Pending":
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user account")
+
+    if user.approval_status == "Rejected":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="OTP verified, but your Organization account is pending Super Admin approval. You will receive an email once approved."
+            detail="Account application was REJECTED by Super Admin.",
         )
 
     user.is_verified = True
     user.otp_code = None
     user.otp_expires_at = None
     await db.commit()
+
+    if user.approval_status == "Pending":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verified, but your Organization account is pending Super Admin approval. You will receive an email once approved."
+        )
+
+    ensure_account_eligible(user)
 
     user_roles = [r.name for r in user.roles]
     access_token = create_access_token(subject=user.id, roles=user_roles)
@@ -195,17 +206,7 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
             detail="Incorrect email or password"
         )
 
-    if user.approval_status == "Pending":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your Organization Account registration is PENDING Super Admin approval. You will receive an email once approved."
-        )
-
-    if user.approval_status == "Rejected":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Account application was REJECTED by Super Admin. Reason: {user.verification_notes or 'Not specified'}"
-        )
+    ensure_account_eligible(user)
 
     user_roles = [r.name for r in user.roles]
     access_token = create_access_token(subject=user.id, roles=user_roles)
@@ -237,6 +238,7 @@ async def refresh_token(token_in: RefreshTokenRequest, db: AsyncSession = Depend
     user = await user_repo.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    ensure_account_eligible(user)
 
     user_roles = [r.name for r in user.roles]
     new_access_token = create_access_token(subject=user.id, roles=user_roles)

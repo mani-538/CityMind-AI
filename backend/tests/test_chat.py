@@ -3,7 +3,7 @@ from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_chat_assistant(client: AsyncClient):
+async def test_chat_assistant(client: AsyncClient, captured_otp_emails):
     # Register & Login User
     reg_payload = {
         "email": "chat_user@ashmora.gov",
@@ -12,6 +12,10 @@ async def test_chat_assistant(client: AsyncClient):
         "role_name": "Citizen"
     }
     await client.post("/api/v1/auth/register", json=reg_payload)
+    await client.post("/api/v1/auth/verify-otp", json={
+        "email": reg_payload["email"],
+        "otp_code": captured_otp_emails[reg_payload["email"]],
+    })
     login_res = await client.post("/api/v1/auth/login", json={"email": "chat_user@ashmora.gov", "password": "Password123!"})
     token = login_res.json()["data"]["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
