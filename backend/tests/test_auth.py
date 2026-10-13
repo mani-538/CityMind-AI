@@ -169,22 +169,56 @@ async def test_resend_does_not_expose_otp(client: AsyncClient, captured_otp_emai
 
 @pytest.mark.asyncio
 async def test_email_failure_is_reported(client: AsyncClient, monkeypatch):
+    email = "email-failure@example.com"
+    initial = await client.post("/api/v1/auth/register", json={
+        "email": email, "password": "SecurePassword123!", "full_name": "Delivery Test",
+    })
+    assert initial.status_code == 201
+    original_otp = (await read_account(email)).otp_code
+
     monkeypatch.setattr(
         "app.api.v1.endpoints.auth.EmailService.send_otp_email",
         lambda *args, **kwargs: False,
     )
-    email = "email-failure@example.com"
-    response = await client.post("/api/v1/auth/register", json={
-        "email": email, "password": "SecurePassword123!", "full_name": "Delivery Test",
-    })
-    assert response.status_code == 201
-    assert response.json()["data"]["otp_sent"] is False
-    assert "demo_otp_code" not in response.json()["data"]
     resend = await client.post("/api/v1/auth/request-otp", json={"email": email})
     assert resend.status_code == 200
     assert resend.json()["success"] is False
     assert resend.json()["data"]["otp_sent"] is False
     assert "demo_otp_code" not in resend.json()["data"]
+    assert (await read_account(email)).otp_code == original_otp
+
+
+@pytest.mark.asyncio
+async def test_registration_email_failure_keeps_account_unverified(client: AsyncClient, monkeypatch):
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.auth.EmailService.send_otp_email",
+        lambda *args, **kwargs: False,
+    )
+    email = "registration-email-failure@example.com"
+    response = await client.post("/api/v1/auth/register", json={
+        "email": email,
+        "password": "SecurePassword123!",
+        "full_name": "Registration Delivery Failure",
+    })
+
+    assert response.status_code == 201
+    assert response.json()["data"]["otp_sent"] is False
+    assert "demo_otp_code" not in response.json()["data"]
+    assert (await read_account(email)).is_verified is False
+
+
+@pytest.mark.asyncio
+async def test_verified_account_cannot_use_otp_as_passwordless_login(client: AsyncClient):
+    email = "citizen@ashmora.gov"
+    request = await client.post("/api/v1/auth/request-otp", json={"email": email})
+    verify = await client.post("/api/v1/auth/verify-otp", json={
+        "email": email,
+        "otp_code": "123456",
+    })
+
+    assert request.status_code == 409
+    assert verify.status_code == 409
+    assert "access_token" not in verify.text
 
 
 @pytest.mark.asyncio
@@ -298,7 +332,7 @@ async def test_pending_organization_otp_verifies_email_without_tokens(
 
 
 @pytest.mark.asyncio
-async def test_approval_before_email_verification_still_requires_otp(
+async def test_approval_requires_email_verification_first(
     client: AsyncClient, captured_otp_emails
 ):
     email = "approved-unverified@example.com"
@@ -318,7 +352,8 @@ async def test_approval_before_email_verification_still_requires_otp(
         json={},
         headers={"Authorization": f"Bearer {admin_login.json()['data']['access_token']}"},
     )
-    assert approval.status_code == 200
+    assert approval.status_code == 409
+    assert "verify their email" in approval.json()["detail"]
 
     login = await client.post("/api/v1/auth/login", json={
         "email": email,
@@ -330,8 +365,46 @@ async def test_approval_before_email_verification_still_requires_otp(
         "email": email,
         "otp_code": captured_otp_emails[email],
     })
-    assert verified.status_code == 200
-    assert "access_token" in verified.json()["data"]
+    assert verified.status_code == 403
+    assert "access_token" not in verified.text
+
+    approval = await client.post(
+        f"/api/v1/auth/organization-requests/{user_id}/approve",
+        json={},
+        headers={"Authorization": f"Bearer {admin_login.json()['data']['access_token']}"},
+    )
+    assert approval.status_code == 200
+
+    repeated = await client.post(
+        f"/api/v1/auth/organization-requests/{user_id}/approve",
+        json={},
+        headers={"Authorization": f"Bearer {admin_login.json()['data']['access_token']}"},
+    )
+    assert repeated.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_organization_decisions_reject_non_applicants(client: AsyncClient):
+    citizen = await read_account("citizen@ashmora.gov")
+    admin_login = await client.post("/api/v1/auth/login", json={
+        "email": "superadmin@ashmora.gov",
+        "password": "DemoPassword123!",
+    })
+    headers = {"Authorization": f"Bearer {admin_login.json()['data']['access_token']}"}
+
+    approval = await client.post(
+        f"/api/v1/auth/organization-requests/{citizen.id}/approve",
+        json={},
+        headers=headers,
+    )
+    rejection = await client.post(
+        f"/api/v1/auth/organization-requests/{citizen.id}/reject",
+        json={},
+        headers=headers,
+    )
+
+    assert approval.status_code == 400
+    assert rejection.status_code == 400
 
 
 @pytest.mark.asyncio

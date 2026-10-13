@@ -14,6 +14,7 @@ export function VerifyOtpForm() {
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { login } = useAuth();
@@ -60,7 +61,13 @@ export function VerifyOtpForm() {
       }
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { detail?: string } } })?.response?.data;
-      setError(data?.detail || 'Invalid or expired OTP. Please try again.');
+      const message = data?.detail || 'Invalid or expired OTP. Please try again.';
+      if (message.includes('Email verified') && message.includes('pending Super Admin approval')) {
+        setPendingApproval(true);
+        setError('');
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -94,9 +101,11 @@ export function VerifyOtpForm() {
         <div className="w-12 h-12 rounded-xl bg-cyan-950 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mx-auto mb-3">
           <Shield className="w-6 h-6" />
         </div>
-        <h1 className="text-2xl font-bold text-white">Email Verification</h1>
+        <h1 className="text-2xl font-bold text-white">{pendingApproval ? 'Email Verified' : 'Email Verification'}</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Enter the code emailed to <span className="text-cyan-400 font-semibold">{email || 'your email'}</span>
+          {pendingApproval
+            ? 'Your organization account is awaiting Super Admin approval.'
+            : <>Enter the code emailed to <span className="text-cyan-400 font-semibold">{email || 'your email'}</span></>}
         </p>
       </div>
 
@@ -116,7 +125,11 @@ export function VerifyOtpForm() {
         </div>
       )}
 
-      {/* OTP Form */}
+      {pendingApproval ? (
+        <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-200 text-sm text-center">
+          Your email is verified. You can sign in after a Super Admin approves your organization request.
+        </div>
+      ) : (
       <form onSubmit={handleVerify} className="space-y-6">
         <div>
           <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3 text-center">
@@ -161,6 +174,7 @@ export function VerifyOtpForm() {
           </button>
         </div>
       </form>
+      )}
     </div>
   );
 }

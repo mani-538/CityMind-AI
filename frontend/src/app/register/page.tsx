@@ -20,6 +20,7 @@ export default function RegisterPage() {
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { login } = useAuth();
@@ -111,7 +112,13 @@ export default function RegisterPage() {
         }
       }
     } catch (err: any) {
-      setError(getErrorMessage(err, 'Invalid OTP code. Please try again.'));
+      const message = getErrorMessage(err, 'Invalid OTP code. Please try again.');
+      if (message.includes('Email verified') && message.includes('pending Super Admin approval')) {
+        setPendingApproval(true);
+        setError('');
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -147,14 +154,16 @@ export default function RegisterPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="w-12 h-12 rounded-xl bg-blue-950 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold mx-auto mb-3 text-xl">
-            {step === 1 ? <User /> : <Key />}
+            {step === 1 ? <User /> : pendingApproval ? <CheckCircle2 /> : <Key />}
           </div>
           <h1 className="text-2xl font-bold text-white">
-            {step === 1 ? 'Create CityMind Account' : 'Verify Your Email'}
+            {step === 1 ? 'Create CityMind Account' : pendingApproval ? 'Email Verified' : 'Verify Your Email'}
           </h1>
           <p className="text-sm text-slate-400 mt-1">
             {step === 1
               ? 'Join the Smart City Intelligence Network'
+              : pendingApproval
+                ? 'Your organization account is awaiting Super Admin approval.'
               : otpSent
                 ? <>Enter the 6-digit code emailed to <span className="text-cyan-400 font-semibold">{email}</span></>
                 : <>We could not deliver a code to <span className="text-cyan-400 font-semibold">{email}</span>. Request a new one below.</>}
@@ -271,7 +280,21 @@ export default function RegisterPage() {
         )}
 
         {/* Step 2: OTP Verification */}
-        {step === 2 && (
+        {step === 2 && pendingApproval && (
+          <div className="space-y-5 text-center">
+            <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-200 text-sm">
+              Your email is verified. You can sign in after a Super Admin approves your organization request.
+            </div>
+            <Link
+              href="/login"
+              className="inline-flex w-full py-3 justify-center rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold transition"
+            >
+              Return to Sign In
+            </Link>
+          </div>
+        )}
+
+        {step === 2 && !pendingApproval && (
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             {/* 6-Digit OTP Boxes */}
             <div>

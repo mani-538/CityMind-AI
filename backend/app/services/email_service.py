@@ -1,4 +1,5 @@
 import resend
+from html import escape
 from app.core.config import settings
 from app.core.logging import logger
 
@@ -6,7 +7,8 @@ from app.core.logging import logger
 class EmailService:
     @staticmethod
     def send_otp_email(to_email: str, otp_code: str, recipient_name: str) -> bool:
-        subject = f"Your Ashmora CityMind Verification Code: {otp_code}"
+        subject = "Your Ashmora CityMind verification code"
+        safe_recipient_name = escape(recipient_name)
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -38,7 +40,7 @@ class EmailService:
                 </div>
 
                 <h2>Email Verification Code</h2>
-                <p>Hello <strong style="color:#e2e8f0">{recipient_name}</strong>,</p>
+                <p>Hello <strong style="color:#e2e8f0">{safe_recipient_name}</strong>,</p>
                 <p>Use the one-time verification code below to complete your authentication. 
                 This code expires in <strong style="color:#f8fafc">10 minutes</strong>.</p>
 
@@ -86,6 +88,9 @@ class EmailService:
     @staticmethod
     def send_approval_email(to_email: str, recipient_name: str, role_name: str, notes: str = "") -> bool:
         subject = "Your Ashmora CityMind Account Has Been Approved!"
+        safe_recipient_name = escape(recipient_name)
+        safe_role_name = escape(role_name)
+        safe_notes = escape(notes)
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -100,9 +105,9 @@ class EmailService:
             <div class="container">
                 <span class="status-badge">APPROVED</span>
                 <h2 style="color: #ffffff;">Welcome to Ashmora CityMind AI</h2>
-                <p style="color: #94a3b8;">Hello {recipient_name},</p>
-                <p style="color: #94a3b8;">Your registration request as <strong>{role_name}</strong> has been reviewed and <strong style="color: #10b981;">APPROVED</strong> by the Super Admin.</p>
-                {f'<p style="color: #cbd5e1; background: #0f172a; padding: 12px; border-radius: 8px;"><strong>Admin Note:</strong> {notes}</p>' if notes else ''}
+                <p style="color: #94a3b8;">Hello {safe_recipient_name},</p>
+                <p style="color: #94a3b8;">Your registration request as <strong>{safe_role_name}</strong> has been reviewed and <strong style="color: #10b981;">APPROVED</strong> by the Super Admin.</p>
+                {f'<p style="color: #cbd5e1; background: #0f172a; padding: 12px; border-radius: 8px;"><strong>Admin Note:</strong> {safe_notes}</p>' if notes else ''}
                 <p style="color: #38bdf8;">You can now log in to access the Government Command Center and Department Portals.</p>
                 <p style="color: #64748b; font-size: 12px; border-top: 1px solid #334155; padding-top: 16px;">Ashmora Technologies Inc. — One City. One Intelligence. Infinite Possibilities.</p>
             </div>
@@ -128,6 +133,8 @@ class EmailService:
     @staticmethod
     def send_rejection_email(to_email: str, recipient_name: str, notes: str = "") -> bool:
         subject = "Update Regarding Your Ashmora CityMind Organization Account"
+        safe_recipient_name = escape(recipient_name)
+        safe_notes = escape(notes)
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -142,9 +149,9 @@ class EmailService:
             <div class="container">
                 <span class="status-badge">REJECTED</span>
                 <h2 style="color: #ffffff;">Account Request Status</h2>
-                <p style="color: #94a3b8;">Hello {recipient_name},</p>
+                <p style="color: #94a3b8;">Hello {safe_recipient_name},</p>
                 <p style="color: #94a3b8;">Your organization registration request has been reviewed and <strong style="color: #ef4444;">REJECTED</strong>.</p>
-                {f'<p style="color: #cbd5e1; background: #0f172a; padding: 12px; border-radius: 8px;"><strong>Reason / Notes:</strong> {notes}</p>' if notes else ''}
+                {f'<p style="color: #cbd5e1; background: #0f172a; padding: 12px; border-radius: 8px;"><strong>Reason / Notes:</strong> {safe_notes}</p>' if notes else ''}
                 <p style="color: #64748b; font-size: 12px; border-top: 1px solid #334155; padding-top: 16px;">If you believe this was an error, please contact your department administrator or email support@ashmora.gov.</p>
             </div>
         </body>
