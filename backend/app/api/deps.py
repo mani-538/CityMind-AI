@@ -14,6 +14,26 @@ from app.models.user import User
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login", auto_error=False)
 
 
+def ensure_account_eligible(user: User) -> None:
+    """Reject accounts that are not allowed to receive or use credentials."""
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user account")
+    if not user.is_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email address is not verified")
+    if user.approval_status == "Pending":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your Organization Account registration is PENDING Super Admin approval.",
+        )
+    if user.approval_status == "Rejected":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account application was REJECTED by Super Admin.",
+        )
+    if user.approval_status != "Approved":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is not approved")
+
+
 async def get_optional_user(
     db: AsyncSession = Depends(get_db),
     token: Optional[str] = Depends(oauth2_scheme)
@@ -27,11 +47,16 @@ async def get_optional_user(
         if not user_id or token_type != "access":
             return None
         
-        stmt = select(User).options(selectinload(User.roles)).where(User.id == user_id)
-        res = await db.execute(stmt)
-        return res.scalars().first()
     except Exception:
         return None
+
+    stmt = select(User).options(selectinload(User.roles)).where(User.id == user_id)
+    res = await db.execute(stmt)
+    user = res.scalars().first()
+    if user is None:
+        return None
+    ensure_account_eligible(user)
+    return user
 
 
 async def get_current_user(
@@ -59,8 +84,7 @@ async def get_current_user(
     user = res.scalars().first()
     if user is None:
         raise credentials_exception
-    if not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user account")
+    ensure_account_eligible(user)
 
     return user
 

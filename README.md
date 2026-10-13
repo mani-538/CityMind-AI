@@ -52,6 +52,24 @@ All sample test accounts are pre-configured with auto-seeding. Default Password:
 - JWT Access & Refresh Token architecture.
 - Passlib secure password hashing.
 - Four User Roles: `Citizen`, `Government Officer`, `Department Admin`, `Super Admin`.
+- Public registration permits `Citizen`, `Government Officer`, `Department Admin`, and `Organization Member`; `Super Admin` cannot be self-assigned.
+- Citizens must verify their email before receiving tokens. Organization applicants must verify their email first and then receive Super Admin approval before they can sign in.
+- Existing access and refresh tokens stop working if an account becomes inactive, unverified, pending approval, or rejected.
+
+### Email verification configuration
+
+Registration requires a working Resend configuration. Set these backend environment variables (see `backend/.env.example`):
+
+```env
+EMAILS_ENABLED=true
+RESEND_API_KEY=re_your_api_key
+EMAILS_FROM_EMAIL=verified-sender@example.com
+EMAILS_FROM_NAME=Ashmora CityMind AI
+```
+
+`EMAILS_FROM_EMAIL` must be a sender/domain verified in Resend. If delivery fails, the API reports `otp_sent: false`; the UI keeps the account in verification and offers a retry. OTP values are never returned by the API or written to application logs.
+
+> Upgrade note: deployments created before email verification enforcement should audit accounts with `is_verified = false`. Such accounts cannot sign in or use existing tokens until they complete OTP verification. Do not update this flag directly in production.
 
 ### 4. Portals & UI
 - **Citizen Portal**: Incident reporting with spatial location picker, AI verification badge, and status timeline tracking.

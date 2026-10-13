@@ -21,12 +21,20 @@ from app.schemas.user import (
     DetailedProfileResponse,
 )
 from app.schemas.common import ResponseEnvelope
-from app.api.deps import get_current_user, require_role
+from app.api.deps import ensure_account_eligible, get_current_user, require_role
 from app.models.user import User, Role
 from app.models.complaint import Complaint
 from app.services.email_service import EmailService
 
 router = APIRouter()
+
+PUBLIC_REGISTRATION_ROLES = {
+    "Citizen",
+    "Government Officer",
+    "Department Admin",
+    "Organization Member",
+}
+ORGANIZATION_ROLES = PUBLIC_REGISTRATION_ROLES - {"Citizen"}
 
 
 def generate_6digit_otp() -> str:
@@ -44,8 +52,15 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
             detail="User with this email already exists"
         )
 
-    role_name = user_in.role_name or "Citizen"
-    is_org_member = role_name in ["Government Officer", "Department Admin", "Organization Member"]
+    role_name = (user_in.role_name or "Citizen").strip()
+
+    if role_name not in PUBLIC_REGISTRATION_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This role is not available for public registration."
+        )
+
+    is_org_member = role_name != "Citizen"
     approval_status = "Pending" if is_org_member else "Approved"
 
     role = await user_repo.get_role_by_name(role_name)
@@ -77,13 +92,16 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
     await user_repo.assign_role_to_user(new_user, role)
     await db.commit()
 
-    EmailService.send_otp_email(new_user.email, otp_code, new_user.full_name)
+    otp_sent = EmailService.send_otp_email(new_user.email, otp_code, new_user.full_name)
 
     msg = (
         "Registration submitted. Since you registered as an Organization Member, your account requires Super Admin approval before you can log in."
         if is_org_member
         else "Registration successful. A 6-digit verification OTP has been sent to your email."
     )
+
+    if not otp_sent:
+        msg = "Account created, but the verification email could not be sent. Please request a new code later."
 
     return ResponseEnvelope(
         success=True,
@@ -92,8 +110,7 @@ async def register_user(user_in: UserRegister, db: AsyncSession = Depends(get_db
             "user_id": new_user.id,
             "email": new_user.email,
             "approval_status": approval_status,
-            "otp_sent": True,
-            "demo_otp_code": otp_code,
+            "otp_sent": bool(otp_sent),
         }
     )
 
@@ -104,23 +121,38 @@ async def request_otp(otp_req: OTPRequest, db: AsyncSession = Depends(get_db)):
     user = await user_repo.get_by_email(otp_req.email)
     if not user:
         raise HTTPException(status_code=404, detail="Account with this email does not exist.")
+    if user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email address is already verified. Please sign in with your password.",
+        )
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user account")
+    if user.approval_status == "Rejected":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account application was REJECTED by Super Admin.",
+        )
 
     otp_code = generate_6digit_otp()
     otp_expires = datetime.now(timezone.utc) + timedelta(minutes=10)
 
-    user.otp_code = otp_code
-    user.otp_expires_at = otp_expires
-    await db.commit()
-
-    EmailService.send_otp_email(user.email, otp_code, user.full_name)
+    otp_sent = EmailService.send_otp_email(user.email, otp_code, user.full_name)
+    if otp_sent:
+        # Do not invalidate a previously delivered code unless its replacement was sent.
+        user.otp_code = otp_code
+        user.otp_expires_at = otp_expires
+        await db.commit()
 
     return ResponseEnvelope(
-        success=True,
-        message="A new 6-digit verification OTP has been dispatched.",
+        success=bool(otp_sent),
+        message=(
+            "A new 6-digit verification OTP has been dispatched."
+            if otp_sent else "The verification email could not be sent. Please try again later."
+        ),
         data={
             "email": user.email,
-            "otp_sent": True,
-            "demo_otp_code": otp_code,
+            "otp_sent": bool(otp_sent),
         }
     )
 
@@ -131,6 +163,11 @@ async def verify_otp(otp_in: OTPVerify, db: AsyncSession = Depends(get_db)):
     user = await user_repo.get_by_email(otp_in.email)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email address is already verified. Please sign in with your password.",
+        )
 
     if not user.otp_code or user.otp_code != otp_in.otp_code:
         raise HTTPException(status_code=400, detail="Invalid OTP verification code.")
@@ -140,16 +177,27 @@ async def verify_otp(otp_in: OTPVerify, db: AsyncSession = Depends(get_db)):
         if datetime.now(timezone.utc) > expires_at:
             raise HTTPException(status_code=400, detail="OTP verification code has expired. Please request a new code.")
 
-    if user.approval_status == "Pending":
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user account")
+
+    if user.approval_status == "Rejected":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="OTP verified, but your Organization account is pending Super Admin approval. You will receive an email once approved."
+            detail="Account application was REJECTED by Super Admin.",
         )
 
     user.is_verified = True
     user.otp_code = None
     user.otp_expires_at = None
     await db.commit()
+
+    if user.approval_status == "Pending":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verified, but your Organization account is pending Super Admin approval. You will receive an email once approved."
+        )
+
+    ensure_account_eligible(user)
 
     user_roles = [r.name for r in user.roles]
     access_token = create_access_token(subject=user.id, roles=user_roles)
@@ -177,17 +225,7 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
             detail="Incorrect email or password"
         )
 
-    if user.approval_status == "Pending":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your Organization Account registration is PENDING Super Admin approval. You will receive an email once approved."
-        )
-
-    if user.approval_status == "Rejected":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Account application was REJECTED by Super Admin. Reason: {user.verification_notes or 'Not specified'}"
-        )
+    ensure_account_eligible(user)
 
     user_roles = [r.name for r in user.roles]
     access_token = create_access_token(subject=user.id, roles=user_roles)
@@ -219,6 +257,7 @@ async def refresh_token(token_in: RefreshTokenRequest, db: AsyncSession = Depend
     user = await user_repo.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    ensure_account_eligible(user)
 
     user_roles = [r.name for r in user.roles]
     new_access_token = create_access_token(subject=user.id, roles=user_roles)
@@ -357,7 +396,11 @@ async def list_organization_requests(db: AsyncSession = Depends(get_db)):
         select(User).order_by(User.created_at.desc())
     )
     users = result.scalars().unique().all()
-    org_users = [u for u in users if u.approval_status in ["Pending", "Approved", "Rejected"] and any(r.name != "Citizen" for r in u.roles)]
+    org_users = [
+        u for u in users
+        if u.approval_status in ["Pending", "Approved", "Rejected"]
+        and any(r.name in ORGANIZATION_ROLES for r in u.roles)
+    ]
     
     return ResponseEnvelope(
         success=True,
@@ -381,6 +424,15 @@ async def approve_organization_request(
     user = await user_repo.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User request not found")
+    if not any(role.name in ORGANIZATION_ROLES for role in user.roles):
+        raise HTTPException(status_code=400, detail="User is not an organization applicant")
+    if user.approval_status != "Pending":
+        raise HTTPException(status_code=409, detail="Organization request has already been decided")
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=409,
+            detail="Organization applicant must verify their email before approval.",
+        )
 
     user.approval_status = "Approved"
     user.approved_by = current_user.full_name
@@ -413,6 +465,10 @@ async def reject_organization_request(
     user = await user_repo.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User request not found")
+    if not any(role.name in ORGANIZATION_ROLES for role in user.roles):
+        raise HTTPException(status_code=400, detail="User is not an organization applicant")
+    if user.approval_status != "Pending":
+        raise HTTPException(status_code=409, detail="Organization request has already been decided")
 
     user.approval_status = "Rejected"
     user.approved_by = current_user.full_name

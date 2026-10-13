@@ -3,7 +3,7 @@ from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_complaint_submission_and_verification_workflow(client: AsyncClient):
+async def test_complaint_submission_and_verification_workflow(client: AsyncClient, captured_otp_emails):
     # 1. Register Citizen & Submit Complaint
     reg_payload = {
         "email": "citizen_workflow@ashmora.gov",
@@ -12,6 +12,10 @@ async def test_complaint_submission_and_verification_workflow(client: AsyncClien
         "role_name": "Citizen"
     }
     await client.post("/api/v1/auth/register", json=reg_payload)
+    await client.post("/api/v1/auth/verify-otp", json={
+        "email": reg_payload["email"],
+        "otp_code": captured_otp_emails[reg_payload["email"]],
+    })
     
     login_res = await client.post("/api/v1/auth/login", json={"email": "citizen_workflow@ashmora.gov", "password": "Password123!"})
     citizen_token = login_res.json()["data"]["access_token"]

@@ -19,7 +19,8 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [resendSuccess, setResendSuccess] = useState(false);
-  const [demoOtp, setDemoOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(false);
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const { login } = useAuth();
@@ -78,11 +79,14 @@ export default function RegisterPage() {
       });
 
       if (regRes.data.success) {
-        if (regRes.data.data?.demo_otp_code) {
-          setDemoOtp(regRes.data.data.demo_otp_code);
-        }
+        const wasOtpSent = regRes.data.data?.otp_sent === true;
+        setOtpSent(wasOtpSent);
         setStep(2);
-        setTimeout(() => inputRefs.current[0]?.focus(), 100);
+        if (wasOtpSent) {
+          setTimeout(() => inputRefs.current[0]?.focus(), 100);
+        } else {
+          setError(regRes.data.message || 'Your account was created, but the verification email could not be sent. Please request a new code.');
+        }
       }
     } catch (err: any) {
       setError(getErrorMessage(err, 'Failed to create account'));
@@ -108,7 +112,13 @@ export default function RegisterPage() {
         }
       }
     } catch (err: any) {
-      setError(getErrorMessage(err, 'Invalid OTP code. Please try again.'));
+      const message = getErrorMessage(err, 'Invalid OTP code. Please try again.');
+      if (message.includes('Email verified') && message.includes('pending Super Admin approval')) {
+        setPendingApproval(true);
+        setError('');
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -120,9 +130,12 @@ export default function RegisterPage() {
     setError('');
     try {
       const res = await apiClient.post('/auth/request-otp', { email });
-      if (res.data.data?.demo_otp_code) {
-        setDemoOtp(res.data.data.demo_otp_code);
+      if (!res.data.success || !res.data.data?.otp_sent) {
+        setOtpSent(false);
+        setError(res.data.message || 'The verification email could not be sent. Please try again later.');
+        return;
       }
+      setOtpSent(true);
       setOtpDigits(['', '', '', '', '', '']);
       setResendSuccess(true);
       setTimeout(() => setResendSuccess(false), 4000);
@@ -141,15 +154,19 @@ export default function RegisterPage() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="w-12 h-12 rounded-xl bg-blue-950 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold mx-auto mb-3 text-xl">
-            {step === 1 ? <User /> : <Key />}
+            {step === 1 ? <User /> : pendingApproval ? <CheckCircle2 /> : <Key />}
           </div>
           <h1 className="text-2xl font-bold text-white">
-            {step === 1 ? 'Create CityMind Account' : 'Verify Your Email'}
+            {step === 1 ? 'Create CityMind Account' : pendingApproval ? 'Email Verified' : 'Verify Your Email'}
           </h1>
           <p className="text-sm text-slate-400 mt-1">
             {step === 1
               ? 'Join the Smart City Intelligence Network'
-              : <>A 6-digit code was sent to <span className="text-cyan-400 font-semibold">{email}</span></>}
+              : pendingApproval
+                ? 'Your organization account is awaiting Super Admin approval.'
+              : otpSent
+                ? <>Enter the 6-digit code emailed to <span className="text-cyan-400 font-semibold">{email}</span></>
+                : <>We could not deliver a code to <span className="text-cyan-400 font-semibold">{email}</span>. Request a new one below.</>}
           </p>
         </div>
 
@@ -263,23 +280,22 @@ export default function RegisterPage() {
         )}
 
         {/* Step 2: OTP Verification */}
-        {step === 2 && (
-          <form onSubmit={handleVerifyOtp} className="space-y-5">
-            {/* Demo OTP hint (for local/staging) */}
-            {demoOtp && (
-              <div className="p-3 rounded-xl bg-cyan-950/50 border border-cyan-800/50 text-center">
-                <p className="text-xs text-cyan-500 font-semibold uppercase tracking-wider mb-1">Dev Mode — Your OTP Code</p>
-                <button
-                  type="button"
-                  onClick={() => setOtpDigits(demoOtp.split(''))}
-                  className="text-2xl font-mono font-bold tracking-widest text-cyan-300 hover:text-white transition cursor-pointer"
-                >
-                  {demoOtp}
-                </button>
-                <p className="text-[10px] text-slate-500 mt-1">Click to auto-fill</p>
-              </div>
-            )}
+        {step === 2 && pendingApproval && (
+          <div className="space-y-5 text-center">
+            <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-200 text-sm">
+              Your email is verified. You can sign in after a Super Admin approves your organization request.
+            </div>
+            <Link
+              href="/login"
+              className="inline-flex w-full py-3 justify-center rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold transition"
+            >
+              Return to Sign In
+            </Link>
+          </div>
+        )}
 
+        {step === 2 && !pendingApproval && (
+          <form onSubmit={handleVerifyOtp} className="space-y-5">
             {/* 6-Digit OTP Boxes */}
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3 text-center">

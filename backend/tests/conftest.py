@@ -22,6 +22,12 @@ def event_loop():
     loop.close()
 
 
+@pytest.fixture(scope="session", autouse=True)
+async def dispose_test_engine():
+    yield
+    await test_engine.dispose()
+
+
 @pytest.fixture(autouse=True)
 async def setup_db():
     async with test_engine.begin() as conn:
@@ -31,6 +37,26 @@ async def setup_db():
     yield
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest.fixture(autouse=True)
+def captured_otp_emails(monkeypatch):
+    sent = {}
+
+    def capture(to_email, otp_code, recipient_name):
+        sent[to_email] = otp_code
+        return True
+
+    monkeypatch.setattr("app.api.v1.endpoints.auth.EmailService.send_otp_email", capture)
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.auth.EmailService.send_approval_email",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.auth.EmailService.send_rejection_email",
+        lambda *args, **kwargs: True,
+    )
+    return sent
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:

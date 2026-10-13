@@ -69,10 +69,25 @@ Follow these 4 simple steps to deploy your repository `https://github.com/mani-5
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 5. Scroll to **Environment Variables** and add:
-   - `SECRET_KEY` = `ashmora-citymind-ai-super-secret-jwt-key`
+   - `SECRET_KEY` = *(a long, random production secret; never use the example value in production)*
    - `GEMINI_API_KEY` = *(Your Gemini API key)*
    - `CORS_ORIGINS` = `*`
+   - `EMAILS_ENABLED` = `true`
+   - `RESEND_API_KEY` = *(Your Resend API key)*
+   - `EMAILS_FROM_EMAIL` = *(A sender address/domain verified in Resend)*
+   - `EMAILS_FROM_NAME` = `Ashmora CityMind AI`
 6. Click **Create Web Service**.
+
+Email delivery is required for new accounts to complete verification. A failed send is reported to the registration UI and can be retried; verification codes are not exposed through API responses or logs.
+
+### Account workflow and upgrade audit
+
+1. Citizens register, receive an email OTP, verify it, and can then sign in.
+2. Government Officers, Department Admins, and Organization Members verify their email before a Super Admin can approve the request.
+3. Pending, rejected, inactive, or unverified accounts cannot obtain or use access/refresh tokens.
+4. Super Admin is not available through public registration.
+
+For databases that predate these checks, audit (do not automatically modify) rows where `is_verified = false`, especially accounts whose `approval_status` is `Approved`. Those users must complete email verification. Never bulk-set `is_verified` in production; use the OTP workflow so ownership is proven.
 
 > Render will build your backend and generate a live URL:  
 > **Backend API Link**: `https://citymind-ai-backend.onrender.com`  
